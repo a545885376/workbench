@@ -448,9 +448,20 @@ function calMove(delta){
 /* ================================================================
    §6 排班模块：照片上传 + OCR 识别
    ================================================================ */
-var shiftList=['白班','中班','夜班','休息'];
-function shiftColor(s){var map={'白班':'#9db6e8','早班':'#f0b86e','中班':'#9bd4c2','夜班':'#7a6fb0','休息':'#bcd6a8','备班':'#f4a6bd'};return map[s]||'#c3b3e8';}
-function normShift(s){s=s.trim();if(s==='休息')return '休息';if(/白/.test(s))return '白班';if(/早/.test(s))return '早班';if(/中/.test(s))return '中班';if(/夜/.test(s))return '夜班';if(/备/.test(s))return '备班';return s;}
+var shiftList=['白','中','夜','休'];
+/* 班次颜色：根据关键字动态分配，未知字符也有颜色 */
+function shiftColor(s){
+  if(!s)return '#c3b3e8';
+  if(/白/.test(s))return '#9db6e8';
+  if(/早/.test(s))return '#f0b86e';
+  if(/中/.test(s))return '#9bd4c2';
+  if(/夜/.test(s))return '#7a6fb0';
+  if(/休/.test(s))return '#bcd6a8';
+  if(/备/.test(s))return '#f4a6bd';
+  return '#c3b3e8';
+}
+/* 不再做班次标准化，排班表上是什么字就填什么字 */
+function normShift(s){return s?s.trim():s;}
 function render_schedule(){
   var v=$('.view[data-id=schedule]');
   var data=DB.get('schedule',{shifts:{}});
@@ -465,8 +476,8 @@ function render_schedule(){
     '<input type="file" accept="image/*" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0" onchange="ocrSchedPhoto(event)">'+
     '📷 拍照 / 选择排班照片</label>'+
     '<div id="ocrResult" style="margin-top:12px"></div>'+
-    '<div style="margin-top:14px"><label class="fl">班次图例</label><div style="display:flex;gap:8px;flex-wrap:wrap">'+shiftList.map(function(s){return '<span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:'+shiftColor(s)+';display:inline-block;margin-right:5px"></i>'+s+'</span>';}).join('')+'</div></div>'+
-    '<div style="margin-top:14px"><label class="fl">手动添加排班</label><div style="display:flex;gap:8px"><input type="date" id="schedDate" class="field" style="flex:1"><select id="schedShift" class="field" style="flex:1">'+shiftList.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select><button class="btn primary sm" onclick="addSchedManual()">＋</button></div></div>'+
+    '<div style="margin-top:14px"><label class="fl">班次图例</label><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>白</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:5px"></i>中</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:5px"></i>夜</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:5px"></i>休</span></div></div>'+
+    '<div style="margin-top:14px"><label class="fl">手动添加排班</label><div style="display:flex;gap:8px"><input type="date" id="schedDate" class="field" style="flex:1"><input type="text" id="schedShift" class="field" style="flex:1" placeholder="班次(如白/中/夜/休)" list="shiftOptions"><datalist id="shiftOptions"><option>白</option><option>中</option><option>夜</option><option>休</option><option>备</option></datalist><button class="btn primary sm" onclick="addSchedManual()">＋</button></div></div>'+
     '<button class="btn ghost danger sm" style="margin-top:14px" onclick="clearSched()">清空排班</button>'+
     '</div></div>';
 }
@@ -562,7 +573,7 @@ function parseSchedText(text,name){
 /* 临时存储当前 OCR 图片数据 */
 var _ocrImgData='';
 var _quickShifts={};
-var _quickShiftCycle=['','白班','中班','夜班','休息'];
+var _quickShiftCycle=['','白','中','夜','休'];
 var _cropImg=new Image();
 var _cropStart=null,_cropRect=null,_cropCanvas=null,_cropCtx=null;
 function ocrSchedPhoto(e){
@@ -619,14 +630,14 @@ function ocrSchedPhoto(e){
       '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 也可手动点击日期设置班次（可反复点击切换）</div>';
     html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
     for(var d=1;d<=daysInMonth;d++){
-      html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
+      html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" oncontextmenu="event.preventDefault();quickEditShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
         '<div style="font-weight:700;color:var(--ink);font-size:12px">'+d+'</div>'+
         '<div class="qs-label" style="font-size:10px;margin-top:2px;color:var(--muted)">－</div></div>';
     }
     html+='</div>';
     html+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
-      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'白班\')"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>全部白班</span>'+
-      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'休息\')"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>全部休息</span>'+
+      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'白\')"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>全部白</span>'+
+      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'休\')"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>全部休</span>'+
       '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'\')">全部清空</span>'+
       '</div>';
     html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
@@ -634,6 +645,15 @@ function ocrSchedPhoto(e){
     box.innerHTML=html;
     /* 初始化裁剪画布 */
     initCropCanvas(r.result);
+    /* 给网格单元格添加触摸长按支持 */
+    box.querySelectorAll('[data-day]').forEach(function(cell){
+      var day=parseInt(cell.dataset.day),timer=null;
+      cell.addEventListener('touchstart',function(e){
+        timer=setTimeout(function(){e.preventDefault();quickEditShift(day);},600);
+      },{passive:true});
+      cell.addEventListener('touchend',function(){clearTimeout(timer);});
+      cell.addEventListener('touchmove',function(){clearTimeout(timer);});
+    });
   };
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
@@ -775,38 +795,28 @@ function startCropOCR(){
     if(st)st.innerHTML='<div class="sec-tip">OCR引擎加载失败，请检查网络后重试，或手动点击网格设置班次</div>';
   });
 }
-/* 班次字符映射：把 OCR 识别的各种可能映射成标准班次名 */
+/* 直接返回 OCR 识别的原始文字，不做任何映射转换 */
 function mapShiftChar(txt){
   if(!txt)return '';
   txt=txt.replace(/\s+/g,'').trim();
-  if(!txt)return '';
-  /* 标准班次 */
-  if(/白/.test(txt))return '白班';
-  if(/中/.test(txt))return '中班';
-  if(/夜/.test(txt))return '夜班';
-  if(/休/.test(txt))return '休息';
-  if(/备/.test(txt))return '备班';
-  if(/早/.test(txt))return '早班';
-  /* 常见 OCR 误识别修正 */
-  if(/臼|曰|日|百|怕|伯|拍/.test(txt))return '白班';
-  if(/虫|申|串|肿|钟|钟|口/.test(txt))return '中班';
-  if(/液|冶|也|谁|准|校/.test(txt))return '夜班';
-  if(/体|本|沐|休|估|桔/.test(txt))return '休息';
-  if(/各|路|备|令/.test(txt))return '备班';
-  /* 如果是单个汉字但不在已知班次中，直接返回原字 */
-  if(txt.length<=2)return txt;
-  /* 如果有多个字符，尝试提取第一个有效字符 */
-  var m=txt.match(/(白|中|夜|休|备|早|臼|虫|液|体)/);
-  if(m)return mapShiftChar(m[1]);
-  return '';
+  return txt;
 }
-/* 快速录入：点击日期切换班次 */
+/* 快速录入：点击日期切换班次，长按可输入自定义文字 */
 function quickToggleShift(day){
   var cur=_quickShifts[day]||'';
   var idx=_quickShiftCycle.indexOf(cur);
   idx=(idx+1)%_quickShiftCycle.length;
   var next=_quickShiftCycle[idx];
   if(next)_quickShifts[day]=next;else delete _quickShifts[day];
+  updateQuickCell(day);
+}
+/* 长按日期弹出输入框，可输入任意班次文字 */
+function quickEditShift(day){
+  var cur=_quickShifts[day]||'';
+  var v=prompt('输入第'+day+'天的班次文字：',cur);
+  if(v===null)return;
+  v=v.trim();
+  if(v)_quickShifts[day]=v;else delete _quickShifts[day];
   updateQuickCell(day);
 }
 function updateQuickCell(day){
