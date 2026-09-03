@@ -479,11 +479,36 @@ function loadTesseract(cb,onErr){
   s.onerror=onErr||function(){};
   document.head.appendChild(s);
 }
+/* Canvas 图片预处理：灰度 + 对比度增强 + 二值化 + 放大，提升 OCR 精度 */
+function preprocessImage(imgData,cb){
+  var img=new Image();
+  img.onload=function(){
+    var scale=2;
+    var c=document.createElement('canvas');
+    c.width=img.width*scale;c.height=img.height*scale;
+    var ctx=c.getContext('2d');
+    ctx.drawImage(img,0,0,c.width,c.height);
+    var imgData=ctx.getImageData(0,0,c.width,c.height);
+    var d=imgData.data;
+    /* 灰度 + 对比度增强 */
+    var contrast=1.8,adjust=128*(1-contrast);
+    for(var i=0;i<d.length;i+=4){
+      var gray=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+      gray=gray*contrast+adjust;
+      /* 二值化 */
+      gray=gray>140?255:0;
+      d[i]=d[i+1]=d[i+2]=gray;
+    }
+    ctx.putImageData(imgData,0,0);
+    cb(c.toDataURL('image/png'));
+  };
+  img.onerror=function(){cb(imgData);};
+  img.src=imgData;
+}
 /* 本地解析排班 OCR 文本 */
 function parseSchedText(text,name){
   var result={};
   var lines=text.split(/\r?\n/).map(function(l){return l.trim();}).filter(function(l){return l;});
-  var shiftRe=/(白班|白|中班|中|夜班|夜|休息|休|备班|备)/g;
   /* 策略1：表格模式 —— 找到日期表头行 + 姓名所在行 */
   if(name){
     var headerLine=-1,nameLine=-1;
@@ -491,12 +516,9 @@ function parseSchedText(text,name){
       if(lines[i].indexOf(name)>=0){nameLine=i;break;}
     }
     if(nameLine>=0){
-      /* 向上找日期表头行（含连续数字） */
       for(var j=nameLine;j>=0;j--){
         var nums=lines[j].match(/\b(\d{1,2})\b/g);
-        if(nums&&nums.length>=5){
-          headerLine=j;break;
-        }
+        if(nums&&nums.length>=5){headerLine=j;break;}
       }
       if(headerLine>=0){
         var days=lines[headerLine].match(/\b(\d{1,2})\b/g)||[];
@@ -537,6 +559,10 @@ function parseSchedText(text,name){
   }
   return result;
 }
+/* 临时存储当前 OCR 图片数据 */
+var _ocrImgData='';
+var _quickShifts={};
+var _quickShiftCycle=['','白班','中班','夜班','休息'];
 function ocrSchedPhoto(e){
   var input=e.target;
   var f=input.files&&input.files[0];if(!f)return;
@@ -569,79 +595,133 @@ function ocrSchedPhoto(e){
       });
     return;
   }
-  /* 无后端时用 Tesseract.js 本地 OCR */
+  /* 无后端时：显示照片 + 快速录入网格 + 尝试本地 OCR */
   var r=new FileReader();
   r.onload=function(){
-    box.innerHTML='<div style="text-align:center"><img src="'+r.result+'" style="max-width:100%;border-radius:12px;margin-bottom:10px"></div>'+
-      '<div id="ocrStatus" style="text-align:center;padding:12px"><span class="sync-spin"></span><br><span style="font-size:13px;color:var(--muted)">正在加载OCR引擎…</span></div>'+
-      '<div id="ocrParsed" style="margin-top:10px"></div>';
-    loadTesseract(function(Tesseract){
-      var st=document.getElementById('ocrStatus');
-      if(st)st.innerHTML='<span class="sync-spin"></span><br><span style="font-size:13px;color:var(--muted)">正在识别排班信息…（首次加载约10-20秒）</span>';
-      Tesseract.recognize(r.result,'chi_sim',{
-        logger:function(m){
-          var s=document.getElementById('ocrStatus');
-          if(s&&m.status){
-            var pct=m.progress?Math.round(m.progress*100)+'%':'';
-            s.innerHTML='<span class="sync-spin"></span><br><span style="font-size:13px;color:var(--muted)">'+m.status+'…'+pct+'</span>';
-          }
-        }
-      }).then(function(result){
-        var rawText=result.data.text||'';
-        var parsed=parseSchedText(rawText,name);
-        showOcrParsed(rawText,parsed,r.result);
-      }).catch(function(){
-        var s=document.getElementById('ocrStatus');
-        if(s)s.innerHTML='<div class="sec-tip">OCR识别失败，请尝试重新拍照或使用手动添加</div>';
-      });
-    },function(){
-      var s=document.getElementById('ocrStatus');
-      if(s)s.innerHTML='<div class="sec-tip">OCR引擎加载失败，请检查网络或使用手动添加</div>';
-    });
+    _ocrImgData=r.result;
+    _quickShifts={};
+    var y=window._sc.y,mo=window._sc.mo;
+    var daysInMonth=new Date(y,mo+1,0).getDate();
+    var html='<div style="text-align:center;margin-bottom:10px"><img src="'+r.result+'" style="max-width:100%;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>'+
+      '<div id="ocrStatus" style="text-align:center;padding:8px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在尝试自动识别…</span></div>'+
+      '<div id="ocrParsed" style="margin-top:8px"></div>'+
+      '<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
+      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 对照上方照片，点击对应日期设置班次（可反复点击切换）</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+    for(var d=1;d<=daysInMonth;d++){
+      html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
+        '<div style="font-weight:700;color:var(--ink);font-size:12px">'+d+'</div>'+
+        '<div class="qs-label" style="font-size:10px;margin-top:2px;color:var(--muted)">－</div></div>';
+    }
+    html+='</div>';
+    html+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'白班\')"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>全部白班</span>'+
+      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'休息\')"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>全部休息</span>'+
+      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'\')">全部清空</span>'+
+      '</div>';
+    html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
+    html+='</div>';
+    box.innerHTML=html;
+    /* 后台尝试 OCR 预填 */
+    tryAutoOCR(r.result,name);
   };
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
   input.value='';
 }
-/* 显示 OCR 解析结果供用户确认 */
-function showOcrParsed(rawText,parsed,imgData){
-  var st=document.getElementById('ocrStatus');
-  var box=document.getElementById('ocrParsed');
-  var count=Object.keys(parsed).length;
-  var y=window._sc.y,mo=window._sc.mo;
-  if(count>0){
-    if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 自动识别到 '+count+' 条排班，请核对后确认</div>';
-    var html='<div style="margin-top:8px"><label class="fl">识别结果（取消勾选可排除错误项）</label>'+
-      '<div style="max-height:220px;overflow-y:auto;border:1px solid var(--rule);border-radius:10px;padding:6px">';
-    Object.keys(parsed).forEach(function(day){
-      var ds=y+'-'+pad(mo+1)+'-'+pad(parseInt(day));
-      var s=parsed[day];
-      html+='<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid var(--rule)">'+
-        '<input type="checkbox" checked data-date="'+ds+'" data-shift="'+s+'" style="flex:0">'+
-        '<span style="flex:1;font-size:13px">'+day+'日</span>'+
-        '<span class="pill" style="background:'+shiftColor(s)+'33">'+s+'</span></label>';
+/* 尝试自动 OCR（预处理图片后识别） */
+function tryAutoOCR(imgData,name){
+  loadTesseract(function(Tesseract){
+    var st=document.getElementById('ocrStatus');
+    if(st)st.innerHTML='<span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在预处理图片…</span>';
+    preprocessImage(imgData,function(processedData){
+      if(st)st.innerHTML='<span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别排班…（首次约10-20秒）</span>';
+      Tesseract.recognize(processedData,'chi_sim',{
+        logger:function(m){
+          var s=document.getElementById('ocrStatus');
+          if(s&&m.status){
+            var pct=m.progress?Math.round(m.progress*100)+'%':'';
+            s.innerHTML='<span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">'+m.status+'…'+pct+'</span>';
+          }
+        }
+      }).then(function(result){
+        var rawText=result.data.text||'';
+        var parsed=parseSchedText(rawText,name);
+        var count=Object.keys(parsed).length;
+        var st2=document.getElementById('ocrStatus');
+        if(count>0){
+          /* 自动预填快速录入网格 */
+          Object.keys(parsed).forEach(function(day){
+            _quickShifts[parseInt(day)]=parsed[day];
+          });
+          updateQuickGrid();
+          if(st2)st2.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 自动识别到 '+count+' 条排班，已预填到下方网格，请核对后确认</div>';
+        }else{
+          if(st2)st2.innerHTML='<div class="sec-tip">自动识别未成功，请对照照片在下方网格中点击设置班次</div>';
+        }
+      }).catch(function(){
+        var s=document.getElementById('ocrStatus');
+        if(s)s.innerHTML='<div class="sec-tip">自动识别未成功，请对照照片在下方网格中点击设置班次</div>';
+      });
     });
-    html+='</div><button class="btn primary btn-block" style="margin-top:10px" onclick="confirmSchedOCR()">✅ 确认同步到日历</button></div>';
-    if(box)box.innerHTML=html;
+  },function(){
+    var s=document.getElementById('ocrStatus');
+    if(s)s.innerHTML='<div class="sec-tip">OCR引擎加载失败，请对照照片在下方网格中点击设置班次</div>';
+  });
+}
+/* 快速录入：点击日期切换班次 */
+function quickToggleShift(day){
+  var cur=_quickShifts[day]||'';
+  var idx=_quickShiftCycle.indexOf(cur);
+  idx=(idx+1)%_quickShiftCycle.length;
+  var next=_quickShiftCycle[idx];
+  if(next)_quickShifts[day]=next;else delete _quickShifts[day];
+  updateQuickCell(day);
+}
+function updateQuickCell(day){
+  var cell=document.querySelector('#ocrResult [data-day="'+day+'"]');
+  if(!cell)return;
+  var label=cell.querySelector('.qs-label');
+  var s=_quickShifts[day]||'';
+  if(s){
+    label.textContent=s;
+    label.style.color='#fff';
+    label.style.fontWeight='700';
+    cell.style.background=shiftColor(s);
+    cell.style.borderColor=shiftColor(s);
   }else{
-    if(st)st.innerHTML='<div class="sec-tip">未能自动解析排班，可在下方文本中核对后手动添加</div>';
-    var html='<div style="margin-top:8px"><label class="fl">OCR识别原文（供参考）</label>'+
-      '<textarea class="field" style="width:100%;min-height:100px;font-size:12px;margin-top:4px" readonly>'+rawText.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea>'+
-      '<div class="sec-tip" style="margin-top:8px">💡 提示：在上方姓名框输入排班表中的名字（如李慧慧），有助于精准识别你的排班行</div></div>';
-    if(box)box.innerHTML=html;
+    label.textContent='－';
+    label.style.color='var(--muted)';
+    label.style.fontWeight='400';
+    cell.style.background='rgba(255,255,255,.6)';
+    cell.style.borderColor='var(--rule)';
   }
 }
-/* 确认 OCR 解析结果并同步到日历 */
-function confirmSchedOCR(){
-  var checks=document.querySelectorAll('#ocrParsed input[type=checkbox]:checked');
-  if(!checks.length){toast('请至少勾选一条排班');return;}
+function updateQuickGrid(){
+  Object.keys(_quickShifts).forEach(function(day){updateQuickCell(parseInt(day));});
+}
+function quickFillAll(shift){
+  var y=window._sc.y,mo=window._sc.mo;
+  var daysInMonth=new Date(y,mo+1,0).getDate();
+  _quickShifts={};
+  if(shift){for(var d=1;d<=daysInMonth;d++)_quickShifts[d]=shift;}
+  for(var d=1;d<=daysInMonth;d++)updateQuickCell(d);
+}
+/* 确认快速录入排班并同步到日历 */
+function confirmQuickSched(){
+  var keys=Object.keys(_quickShifts);
+  if(!keys.length){toast('请先在网格中点击设置排班');return;}
   var data=DB.get('schedule',{shifts:{}});
-  checks.forEach(function(c){
-    if(c.dataset.date&&c.dataset.shift)data.shifts[c.dataset.date]=c.dataset.shift;
+  var y=window._sc.y,mo=window._sc.mo;
+  var count=0;
+  keys.forEach(function(day){
+    var d=parseInt(day);
+    var ds=y+'-'+pad(mo+1)+'-'+pad(d);
+    if(_quickShifts[d]){data.shifts[ds]=_quickShifts[d];count++;}
   });
   DB.set('schedule',data);
   var box=document.getElementById('ocrResult');
-  if(box)box.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 已同步 '+checks.length+' 条排班到日历</div>';
+  if(box)box.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 已同步 '+count+' 条排班到日历</div>';
   render_schedule();
   toast('排班已同步');
 }
