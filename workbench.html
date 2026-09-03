@@ -404,10 +404,9 @@ function saveApiBase(){
    ================================================================ */
 var MODULES=[
   {id:'schedule',name:'排班',ic:'📅',color:'pink',title:'我的排班'},
-  {id:'checkin',name:'签到',ic:'✅',color:'mint',title:'每日签到'},
+  {id:'fitness',name:'健身',ic:'💪',color:'sage',title:'健身'},
   {id:'news',name:'新闻',ic:'📰',color:'sky',title:'新闻'},
   {id:'media',name:'自媒体',ic:'📱',color:'rose',title:'自媒体爆款'},
-  {id:'fitness',name:'健身',ic:'💪',color:'sage',title:'健身'},
   {id:'reading',name:'读书',ic:'📚',color:'lav',title:'读书推荐'},
   {id:'account',name:'记账',ic:'💰',color:'peach',title:'收支记账'},
   {id:'outfit',name:'穿搭',ic:'👗',color:'pink',title:'每日穿搭'},
@@ -1034,23 +1033,6 @@ function render_schedule_cal(delta){
   var box=document.getElementById('schedCal');if(box)box.innerHTML=cal;
 }
 function clearSched(){if(confirm('确认清空所有排班数据？')){DB.set('schedule',{shifts:{}});render_schedule();toast('已清空排班');}}
-
-/* ================================================================
-   §7 签到打卡模块：九号 / 飞猪 / 比亚迪
-   ================================================================ */
-function render_checkin(){
-  var v=$('.view[data-id=checkin]');
-  var portals=[
-    {key:'nine',name:'九号出行',ic:'🛴',cls:'p-nine',url:'https://www.ninebot.com/cn/',desc:'每日签到领积分'},
-    {key:'fliggy',name:'飞猪旅行',ic:'🐷',cls:'p-fliggy',url:'https://www.fliggy.com/',desc:'旅行签到领里程'},
-    {key:'byd',name:'比亚迪海洋',ic:'🚗',cls:'p-byd',url:'https://www.byd.com.cn/ocean.html',desc:'车主每日签到'}
-  ];
-  var cards=portals.map(function(p){
-    return '<div class="portal '+p.cls+'" onclick="window.open(\''+p.url+'\',\'_blank\')">'+
-      '<div class="big-ic">'+p.ic+'</div><b>'+p.name+'</b><small>'+p.desc+'</small></div>';
-  }).join('');
-  v.innerHTML='<div class="card glass"><div class="portal-grid">'+cards+'</div></div>';
-}
 
 /* ================================================================
    §8 新闻模块：APP 图标卡片 + 后端抓取正文
