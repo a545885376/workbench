@@ -608,26 +608,22 @@ function ocrSchedPhoto(e){
       });
     return;
   }
-  /* 无后端：显示照片 + 框选识别 + 快速录入网格 */
+  /* 无后端：显示照片 + 自动识别姓名行 + 逐格识别 + 快速录入网格 */
   var r=new FileReader();
   r.onload=function(){
     _ocrImgData=r.result;
     _quickShifts={};
     var y=window._sc.y,mo=window._sc.mo;
     var daysInMonth=new Date(y,mo+1,0).getDate();
-    var html='<div class="sec-tip" style="margin-bottom:10px;border-color:var(--accent)">👆 请在下方照片上，用手指<strong>拖动画一个框</strong>，选中你的那一行排班（从第1天划到最后一天），系统会逐格识别</div>';
-    html+='<div style="position:relative;border-radius:12px;overflow:hidden;border:2px solid var(--rule);margin-bottom:10px">'+
-      '<canvas id="cropCanvas" style="display:block;width:100%;touch-action:none"></canvas>'+
-      '<div id="cropHint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.5);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;pointer-events:none">👆 在照片上拖动选中你的排班行</div>'+
-      '</div>';
-    html+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
-      '<button class="btn primary sm" onclick="startCropOCR()">🔍 识别框选区域</button>'+
-      '<button class="btn ghost sm" onclick="resetCrop()">重新框选</button>'+
-      '</div>';
+    var html='';
+    /* 照片放大显示，可滚动查看 */
+    html+='<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:2px solid var(--rule);position:relative">'+
+      '<div style="max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch">'+
+      '<img src="'+r.result+'" style="width:100%;min-width:320px;display:block"></div></div>';
     html+='<div id="ocrStatus" style="margin-bottom:8px"></div>';
     html+='<div id="ocrParsed" style="margin-top:8px"></div>';
     html+='<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
-      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 也可手动点击日期设置班次（可反复点击切换）</div>';
+      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 也可手动点击日期设置班次（长按可输入自定义文字）</div>';
     html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
     for(var d=1;d<=daysInMonth;d++){
       html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" oncontextmenu="event.preventDefault();quickEditShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
@@ -643,8 +639,6 @@ function ocrSchedPhoto(e){
     html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
     html+='</div>';
     box.innerHTML=html;
-    /* 初始化裁剪画布 */
-    initCropCanvas(r.result);
     /* 给网格单元格添加触摸长按支持 */
     box.querySelectorAll('[data-day]').forEach(function(cell){
       var day=parseInt(cell.dataset.day),timer=null;
@@ -654,146 +648,176 @@ function ocrSchedPhoto(e){
       cell.addEventListener('touchend',function(){clearTimeout(timer);});
       cell.addEventListener('touchmove',function(){clearTimeout(timer);});
     });
+    /* 开始自动识别 */
+    autoDetectRow(r.result,name);
   };
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
   input.value='';
 }
-/* 初始化裁剪画布 */
-function initCropCanvas(imgSrc){
-  _cropImg=new Image();
-  _cropImg.onload=function(){
-    var canvas=document.getElementById('cropCanvas');
-    if(!canvas)return;
-    var maxW=canvas.parentElement.offsetWidth||400;
-    var scale=Math.min(1,maxW/_cropImg.width);
-    canvas.width=_cropImg.width*scale;
-    canvas.height=_cropImg.height*scale;
-    _cropScale=scale;
-    _cropCtx=canvas.getContext('2d');
-    _cropCtx.drawImage(_cropImg,0,0,canvas.width,canvas.height);
-    _cropCanvas=canvas;
-    _cropRect=null;
-    /* 触摸/鼠标事件 */
-    var isDrawing=false;
-    function getPos(e){
-      var rect=canvas.getBoundingClientRect();
-      var t=e.touches?e.touches[0]:e;
-      return {x:(t.clientX-rect.left)*(canvas.width/rect.width),y:(t.clientY-rect.top)*(canvas.height/rect.height)};
-    }
-    function start(e){e.preventDefault();isDrawing=true;_cropStart=getPos(e);var h=document.getElementById('cropHint');if(h)h.style.display='none';}
-    function move(e){
-      if(!isDrawing)return;e.preventDefault();
-      var p=getPos(e);
-      _cropRect={x:Math.min(_cropStart.x,p.x),y:Math.min(_cropStart.y,p.y),w:Math.abs(p.x-_cropStart.x),h:Math.abs(p.y-_cropStart.y)};
-      _cropCtx.clearRect(0,0,canvas.width,canvas.height);
-      _cropCtx.drawImage(_cropImg,0,0,canvas.width,canvas.height);
-      /* 遮罩 */
-      _cropCtx.fillStyle='rgba(0,0,0,0.5)';
-      _cropCtx.fillRect(0,0,canvas.width,canvas.height);
-      /* 挖出选区 */
-      _cropCtx.globalCompositeOperation='destination-out';
-      _cropCtx.fillStyle='#000';
-      _cropCtx.fillRect(_cropRect.x,_cropRect.y,_cropRect.w,_cropRect.h);
-      _cropCtx.globalCompositeOperation='source-over';
-      /* 重绘选区内容 */
-      _cropCtx.drawImage(_cropImg,_cropRect.x/_cropScale,_cropRect.y/_cropScale,_cropRect.w/_cropScale,_cropRect.h/_cropScale,_cropRect.x,_cropRect.y,_cropRect.w,_cropRect.h);
-      /* 选区边框 */
-      _cropCtx.strokeStyle='#e89bb8';_cropCtx.lineWidth=3;_cropCtx.setLineDash([8,4]);
-      _cropCtx.strokeRect(_cropRect.x,_cropRect.y,_cropRect.w,_cropRect.h);
-      _cropCtx.setLineDash([]);
-    }
-    function end(e){e.preventDefault();isDrawing=false;}
-    canvas.addEventListener('mousedown',start);
-    canvas.addEventListener('mousemove',move);
-    canvas.addEventListener('mouseup',end);
-    canvas.addEventListener('mouseleave',end);
-    canvas.addEventListener('touchstart',start,{passive:false});
-    canvas.addEventListener('touchmove',move,{passive:false});
-    canvas.addEventListener('touchend',end,{passive:false});
+/* 自动识别全图，找到姓名所在行，裁剪并逐格 OCR */
+var _fullImg=new Image();
+function autoDetectRow(imgData,name){
+  var st=document.getElementById('ocrStatus');
+  if(!name){if(st)st.innerHTML='<div class="sec-tip">请先在上方姓名框输入你的名字（如李慧慧），再上传照片</div>';return;}
+  if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在加载OCR引擎…</span></div>';
+  _fullImg=new Image();
+  _fullImg.onload=function(){
+    loadTesseract(function(Tesseract){
+      if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别全图，寻找"'+name+'"的位置…</span></div>';
+      preprocessImage(imgData,function(processedData){
+        Tesseract.recognize(processedData,'chi_sim',{
+          logger:function(m){
+            if(st&&m.status){
+              var pct=m.progress?Math.round(m.progress*100)+'%':'';
+              st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">'+m.status+'…'+pct+'</span></div>';
+            }
+          }
+        }).then(function(result){
+          /* 在 words 和 lines 中搜索姓名 */
+          var nameBbox=null;
+          var words=result.data.words||[];
+          var lines=result.data.lines||[];
+          /* 先在 lines 里找 */
+          for(var i=0;i<lines.length;i++){
+            if(lines[i].text&&lines[i].text.indexOf(name)>=0){nameBbox=lines[i].bbox;break;}
+          }
+          /* 再在 words 里找 */
+          if(!nameBbox){
+            for(var i=0;i<words.length;i++){
+              if(words[i].text&&words[i].text.indexOf(name)>=0){nameBbox=words[i].bbox;break;}
+            }
+          }
+          /* 部分匹配：逐字搜索名字的每个字，找同一行y位置的 */
+          if(!nameBbox&&name.length>1){
+            var foundChars=[];
+            for(var i=0;i<words.length;i++){
+              for(var c=0;c<name.length;c++){
+                if(words[i].text&&words[i].text.indexOf(name[c])>=0){foundChars.push(words[i]);break;}
+              }
+            }
+            if(foundChars.length>=1){
+              /* 按 y 分组，找包含最多名字字符的行 */
+              var groups=[];
+              foundChars.forEach(function(w){
+                var wy=(w.bbox.y0+w.bbox.y1)/2;
+                var placed=false;
+                for(var g=0;g<groups.length;g++){
+                  var gy=(groups[g][0].bbox.y0+groups[g][0].bbox.y1)/2;
+                  if(Math.abs(wy-gy)<20){groups[g].push(w);placed=true;break;}
+                }
+                if(!placed)groups.push([w]);
+              });
+              groups.sort(function(a,b){return b.length-a.length;});
+              if(groups[0]){
+                var g=groups[0];
+                nameBbox={
+                  x0:Math.min.apply(null,g.map(function(w){return w.bbox.x0;})),
+                  y0:Math.min.apply(null,g.map(function(w){return w.bbox.y0;})),
+                  x1:Math.max.apply(null,g.map(function(w){return w.bbox.x1;})),
+                  y1:Math.max.apply(null,g.map(function(w){return w.bbox.y1;}))
+                };
+              }
+            }
+          }
+          if(nameBbox){
+            if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 找到"'+name+'"，正在裁剪该行并逐格识别…</div>';
+            doRowOCR(imgData,nameBbox,Tesseract,st);
+          }else{
+            /* 找不到名字，尝试找包含姓氏的行 */
+            var surname=name.charAt(0);
+            var surnamedBbox=null;
+            for(var i=0;i<words.length;i++){
+              if(words[i].text&&words[i].text.indexOf(surname)>=0){surnamedBbox=words[i].bbox;break;}
+            }
+            if(surnamedBbox){
+              if(st)st.innerHTML='<div class="sec-tip">未精确找到"'+name+'"，但找到姓氏"'+surname+'"，尝试识别该行…</div>';
+              doRowOCR(imgData,surnamedBbox,Tesseract,st);
+            }else{
+              if(st)st.innerHTML='<div class="sec-tip">未找到"'+name+'"，请确保姓名框输入正确，或手动点击下方网格设置班次</div>';
+            }
+          }
+        }).catch(function(){
+          if(st)st.innerHTML='<div class="sec-tip">全图识别失败，请手动点击下方网格设置班次</div>';
+        });
+      });
+    },function(){
+      if(st)st.innerHTML='<div class="sec-tip">OCR引擎加载失败，请检查网络后重试</div>';
+    });
   };
-  _cropImg.src=imgSrc;
+  _fullImg.src=imgData;
 }
-var _cropScale=1;
-function resetCrop(){
-  if(!_cropCanvas||!_cropImg)return;
-  _cropRect=null;
-  _cropCtx.clearRect(0,0,_cropCanvas.width,_cropCanvas.height);
-  _cropCtx.drawImage(_cropImg,0,0,_cropCanvas.width,_cropCanvas.height);
-  var h=document.getElementById('cropHint');if(h)h.style.display='';
-  var st=document.getElementById('ocrStatus');if(st)st.innerHTML='';
-}
-/* 框选区域逐格 OCR */
-function startCropOCR(){
-  if(!_cropRect||_cropRect.w<20||_cropRect.h<5){
-    toast('请先在照片上拖动框选你的排班行');
-    return;
-  }
+/* 裁剪姓名所在行，逐格 OCR */
+function doRowOCR(imgData,nameBbox,Tesseract,st){
+  var img=_fullImg;
+  var imgW=img.width,imgH=img.height;
   var y=window._sc.y,mo=window._sc.mo;
   var daysInMonth=new Date(y,mo+1,0).getDate();
-  var st=document.getElementById('ocrStatus');
-  if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在逐格识别…（首次加载约10秒）</span></div>';
-  /* 从原图裁剪选区 */
-  var sx=_cropRect.x/_cropScale,sy=_cropRect.y/_cropScale,sw=_cropRect.w/_cropScale,sh=_cropRect.h/_cropScale;
-  loadTesseract(function(Tesseract){
-    /* 将选区分成 daysInMonth 等份，逐格识别 */
-    var cellW=sw/daysInMonth;
-    var cellImgs=[];
-    for(var d=1;d<=daysInMonth;d++){
-      var cx=sx+(d-1)*cellW;
-      /* 每格裁剪 + 放大3倍 + 灰度二值化 */
-      var c=document.createElement('canvas');
-      var upscale=4;
-      c.width=Math.max(cellW*upscale,40);
-      c.height=Math.max(sh*upscale,40);
-      var ctx=c.getContext('2d');
-      ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
-      ctx.drawImage(_cropImg,cx,sy,cellW,sh,2,2,c.width-4,c.height-4);
-      /* 灰度+对比度 */
-      var id=ctx.getImageData(0,0,c.width,c.height);
-      var dd=id.data;
-      var contrast=2.0,adj=128*(1-contrast);
-      for(var i=0;i<dd.length;i+=4){
-        var g=0.299*dd[i]+0.587*dd[i+1]+0.114*dd[i+2];
-        g=g*contrast+adj;
-        g=g>130?255:0;
-        dd[i]=dd[i+1]=dd[i+2]=g;
-      }
-      ctx.putImageData(id,0,0);
-      cellImgs.push({day:d,dataUrl:c.toDataURL('image/png')});
+  /* 行的 y 范围：姓名 bbox 上下加一点 padding */
+  var rowY0=Math.max(0,nameBbox.y0-5);
+  var rowY1=Math.min(imgH,nameBbox.y1+5);
+  var rowH=rowY1-rowY0;
+  /* 数据区域 x 范围：从姓名右侧到图片右边缘 */
+  var dataX0=nameBbox.x1+2;
+  var dataX1=imgW;
+  var dataW=dataX1-dataX0;
+  /* 显示裁剪后的排班行（放大） */
+  var parsedBox=document.getElementById('ocrParsed');
+  if(parsedBox){
+    var cc=document.createElement('canvas');
+    cc.width=dataW;cc.height=rowH;
+    var cctx=cc.getContext('2d');
+    cctx.drawImage(img,dataX0,rowY0,dataW,rowH,0,0,dataW,rowH);
+    parsedBox.innerHTML='<div style="margin-bottom:8px"><label class="fl">已自动裁剪排班行</label>'+
+      '<div style="border-radius:10px;overflow:hidden;border:2px solid var(--accent);margin-top:4px;background:#fff">'+
+      '<img src="'+cc.toDataURL('image/png')+'" style="width:100%;display:block;image-rendering:pixelated"></div></div>';
+  }
+  /* 逐格 OCR */
+  var cellW=dataW/daysInMonth;
+  var results={};
+  var idx=0;
+  function ocrNext(){
+    if(idx>=daysInMonth){
+      var count=0;
+      Object.keys(results).forEach(function(day){
+        if(results[day]){_quickShifts[parseInt(day)]=results[day];count++;}
+      });
+      updateQuickGrid();
+      if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 逐格识别完成，识别到 '+count+' 条排班，已预填到下方网格，请核对后确认</div>';
+      return;
     }
-    /* 逐格 OCR */
-    var results={};
-    var idx=0;
-    function ocrNext(){
-      if(idx>=cellImgs.length){
-        /* 完成，填入网格 */
-        var count=0;
-        Object.keys(results).forEach(function(day){
-          var s=results[day];
-          if(s){_quickShifts[parseInt(day)]=s;count++;}
-        });
-        updateQuickGrid();
-        if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 逐格识别完成，识别到 '+count+' 条排班，已预填到下方网格，请核对后确认</div>';
-        return;
-      }
-      var ci=cellImgs[idx];
-      var progress=Math.round((idx/cellImgs.length)*100);
-      if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别第'+ci.day+'天… ('+progress+'%)</span></div>';
-      Tesseract.recognize(ci.dataUrl,'chi_sim',{logger:function(){}})
-        .then(function(res){
-          var txt=(res.data.text||'').trim();
-          /* 识别结果映射：什么字就填什么字 */
-          var mapped=mapShiftChar(txt);
-          if(mapped)results[ci.day]=mapped;
-          idx++;ocrNext();
-        })
-        .catch(function(){idx++;ocrNext();});
+    var day=idx+1;
+    var cx=dataX0+idx*cellW;
+    var progress=Math.round((idx/daysInMonth)*100);
+    if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别第'+day+'天… ('+progress+'%)</span></div>';
+    /* 裁剪单格 + 放大4倍 + 灰度二值化 */
+    var c=document.createElement('canvas');
+    var upscale=4;
+    c.width=Math.max(cellW*upscale,48);
+    c.height=Math.max(rowH*upscale,48);
+    var ctx=c.getContext('2d');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(img,cx,rowY0,cellW,rowH,2,2,c.width-4,c.height-4);
+    var id=ctx.getImageData(0,0,c.width,c.height);
+    var dd=id.data;
+    var contrast=2.0,adj=128*(1-contrast);
+    for(var i=0;i<dd.length;i+=4){
+      var g=0.299*dd[i]+0.587*dd[i+1]+0.114*dd[i+2];
+      g=g*contrast+adj;
+      g=g>130?255:0;
+      dd[i]=dd[i+1]=dd[i+2]=g;
     }
-    ocrNext();
-  },function(){
-    if(st)st.innerHTML='<div class="sec-tip">OCR引擎加载失败，请检查网络后重试，或手动点击网格设置班次</div>';
-  });
+    ctx.putImageData(id,0,0);
+    Tesseract.recognize(c.toDataURL('image/png'),'chi_sim',{logger:function(){}})
+      .then(function(res){
+        var txt=(res.data.text||'').trim();
+        var mapped=mapShiftChar(txt);
+        if(mapped)results[day]=mapped;
+        idx++;ocrNext();
+      })
+      .catch(function(){idx++;ocrNext();});
+  }
+  ocrNext();
 }
 /* 直接返回 OCR 识别的原始文字，不做任何映射转换 */
 function mapShiftChar(txt){
