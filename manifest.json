@@ -1,0 +1,19 @@
+{
+  "name": "猪油渣个人工作台",
+  "short_name": "猪油渣",
+  "description": "个人综合管理工作台",
+  "start_url": "./workbench.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fdf2f8",
+  "theme_color": "#f6c5d8",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512 any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

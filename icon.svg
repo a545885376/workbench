@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fdf2f8"/>
+      <stop offset="50%" style="stop-color:#eef4ff"/>
+      <stop offset="100%" style="stop-color:#f0fdf4"/>
+    </linearGradient>
+    <linearGradient id="pig" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f4a6bd"/>
+      <stop offset="100%" style="stop-color:#ee9bb0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="3"/>
+  <!-- Pig body -->
+  <ellipse cx="256" cy="280" rx="130" ry="110" fill="url(#pig)"/>
+  <!-- Pig ears -->
+  <path d="M 168 200 Q 148 165 175 158 Q 195 168 192 200 Z" fill="#ee9bb0"/>
+  <path d="M 344 200 Q 364 165 337 158 Q 317 168 320 200 Z" fill="#ee9bb0"/>
+  <path d="M 172 195 Q 160 175 178 170 Q 188 178 186 195 Z" fill="#f6c89f"/>
+  <path d="M 340 195 Q 352 175 334 170 Q 324 178 326 195 Z" fill="#f6c89f"/>
+  <!-- Pig snout -->
+  <ellipse cx="256" cy="300" rx="48" ry="36" fill="#f6c89f"/>
+  <ellipse cx="240" cy="300" rx="7" ry="11" fill="#d4859b"/>
+  <ellipse cx="272" cy="300" rx="7" ry="11" fill="#d4859b"/>
+  <!-- Pig eyes -->
+  <circle cx="218" cy="255" r="10" fill="#5b5470"/>
+  <circle cx="294" cy="255" r="10" fill="#5b5470"/>
+  <circle cx="221" cy="252" r="3.5" fill="#fff"/>
+  <circle cx="297" cy="252" r="3.5" fill="#fff"/>
+  <!-- Smile -->
+  <path d="M 235 335 Q 256 348 277 335" stroke="#d4859b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- Cheeks -->
+  <circle cx="195" cy="285" r="14" fill="rgba(244,166,189,0.4)"/>
+  <circle cx="317" cy="285" r="14" fill="rgba(244,166,189,0.4)"/>
+</svg>
