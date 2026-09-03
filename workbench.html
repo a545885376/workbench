@@ -158,6 +158,25 @@ label.fl{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:5px;d
 .p-byd .big-ic::before{content:"海洋";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:28px;font-weight:800;color:#fff;letter-spacing:2px;text-shadow:0 2px 8px rgba(0,0,0,.2)}
 /* 隐藏portal内的emoji图标（用CSS伪元素替代） */
 .p-nine .big-ic, .p-fliggy .big-ic, .p-byd .big-ic{font-size:0}
+/* 新闻模块 - 三列小图标布局 */
+.news-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.news-app{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:.25s;text-align:center}
+.news-app:hover{transform:translateY(-3px) scale(1.03)}
+.news-app .ic-box{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;position:relative;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.news-app b{font-size:12px;font-weight:600}
+/* 央视新闻 - 深蓝圆角方形 + 文字 */
+.news-cctv .ic-box{background:linear-gradient(145deg,#1a3a8a 0%,#0d2366 100%)}
+.news-cctv .ic-box::before{content:"央视";position:absolute;top:12px;left:0;right:0;text-align:center;color:#fff;font-size:14px;font-weight:900;letter-spacing:1px}
+.news-cctv .ic-box::after{content:"新闻";position:absolute;bottom:10px;left:0;right:0;text-align:center;color:#e8c08a;font-size:13px;font-weight:900;letter-spacing:1px}
+/* 人民网 - 红色圆形地球logo风格 */
+.news-people .ic-box{background:linear-gradient(145deg,#e83e2a 0%,#c02515 100%)}
+.news-people .ic-box::before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffb347 0%,#e87a2a 40%,#c0392b 100%);box-shadow:inset -2px -2px 6px rgba(0,0,0,.2)}
+.news-people .ic-box::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-60%) rotate(25deg);width:28px;height:14px;border:2px solid #fff;border-radius:50%;border-top-color:transparent;border-left-color:transparent}
+/* 新华网 - 蓝白渐变 + N字母 */
+.news-xinhua .ic-box{background:linear-gradient(180deg,#fff 0%,#fff 60%,#1565c0 60%,#0d47a1 100%)}
+.news-xinhua .ic-box::before{content:"N";position:absolute;top:8px;left:12px;font-size:28px;font-weight:900;color:#2196f3;font-family:Arial,Helvetica,sans-serif;line-height:1}
+.news-xinhua .ic-box::after{content:"EWS";position:absolute;top:26px;left:28px;font-size:10px;font-weight:800;color:#1565c0;font-family:Arial,Helvetica,sans-serif;letter-spacing:-0.5px}
+.news-xinhua b{color:#1565c0}
 .check{width:22px;height:22px;border-radius:8px;border:2px solid var(--rule);display:grid;place-items:center;transition:.2s;flex-shrink:0;cursor:pointer}
 .check.done{background:linear-gradient(135deg,var(--ok),#6ab189);border-color:transparent}
 .check.done::after{content:"✓";color:#fff;font-size:13px;font-weight:800}
@@ -1037,23 +1056,18 @@ function clearSched(){if(confirm('确认清空所有排班数据？')){DB.set('s
 /* ================================================================
    §8 新闻模块：APP 图标卡片 + 后端抓取正文
    ================================================================ */
-var NEWS_SOURCES=[
-  {key:'cctv',name:'央视新闻',ic:'📺',color:'#c0392b',url:'https://news.cctv.com/'},
-  {key:'people',name:'人民网',ic:'🔴',color:'#b9353f',url:'http://www.people.com.cn/'},
-  {key:'xinhua',name:'新华网',ic:'🔵',color:'#1a5b9c',url:'http://www.xinhuanet.com/'}
-];
 function render_news(){
   var v=$('.view[data-id=news]');
-  var cards=NEWS_SOURCES.map(function(s){
-    return '<div class="portal news-portal" onclick="window.open(\''+s.url+'\',\'_blank\')">'+
-      '<div class="big-ic" style="background:'+s.color+'">'+s.ic+'</div><b>'+s.name+'</b></div>';
+  var items=[
+    {key:'cctv',name:'央视新闻',cls:'news-cctv',url:'https://news.cctv.com/'},
+    {key:'people',name:'人民网',cls:'news-people',url:'http://www.people.com.cn/'},
+    {key:'xinhua',name:'新华网',cls:'news-xinhua',url:'http://www.xinhuanet.com/'}
+  ];
+  var cards=items.map(function(s){
+    return '<div class="news-app '+s.cls+'" onclick="window.open(\''+s.url+'\',\'_blank\')">'+
+      '<div class="ic-box"></div><b>'+s.name+'</b></div>';
   }).join('');
-  v.innerHTML='<div class="card glass"><div class="portal-grid">'+cards+'</div></div>';
-}
-function fetchNews(source){
-  var src=NEWS_SOURCES.find(function(s){return s.key===source;});
-  if(!src)return;
-  window.open(src.url,'_blank');
+  v.innerHTML='<div class="card glass"><div class="news-row">'+cards+'</div></div>';
 }
 
 /* ================================================================
