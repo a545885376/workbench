@@ -203,6 +203,7 @@ label.fl{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:5px;d
 .sync-status{font-size:11px;color:var(--muted);text-align:center;padding:4px}
 .sync-spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 /* 日历训练详情 */
 .fit-detail{padding:14px;border-radius:14px;background:rgba(255,255,255,.5);margin-top:10px;border:1px solid rgba(255,255,255,.5)}
 .fit-detail .fe{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px}
@@ -573,7 +574,8 @@ function parseSchedText(text,name){
 /* 临时存储当前 OCR 图片数据 */
 var _ocrImgData='';
 var _quickShifts={};
-var _quickShiftCycle=['','白班','中班','夜班','休息'];
+var _quickShiftCycle=['','白','中','夜','休'];
+var _selectedDay=0;
 var _cropImg=new Image();
 var _cropStart=null,_cropRect=null,_cropCanvas=null,_cropCtx=null;
 function ocrSchedPhoto(e){
@@ -621,25 +623,26 @@ function ocrSchedPhoto(e){
       '<div style="max-height:350px;overflow:auto;-webkit-overflow-scrolling:touch;position:relative">'+
       '<img id="schedPhoto" src="'+r.result+'" style="width:100%;min-width:320px;display:block;cursor:crosshair" onclick="photoTapSelectRow(event)">'+
       '</div>'+
-      '<div id="photoHint" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;pointer-events:none;white-space:nowrap">自动识别中… 如果找不到名字，请点一下你的排班行</div>'+
+      '<div id="photoHint" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(232,155,184,.85);color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;pointer-events:none;white-space:nowrap;animation:pulse 1.5s infinite">👆 点一下你的排班行（点那一行任意位置）</div>'+
       '</div>';
     html+='<div id="ocrStatus" style="margin-bottom:8px"></div>';
     html+='<div id="ocrParsed" style="margin-top:8px"></div>';
     html+='<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
-      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 点击日期设置班次（长按可输入自定义文字）</div>';
+      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 先点日期选中，再点下方按钮设置班次（长按可输入自定义文字）</div>';
     html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
     for(var d=1;d<=daysInMonth;d++){
-      html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" oncontextmenu="event.preventDefault();quickEditShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
+      html+='<div id="qd'+d+'" data-day="'+d+'" onclick="selectDay('+d+')" oncontextmenu="event.preventDefault();quickEditShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:2px solid var(--rule);cursor:pointer;font-size:11px;transition:all .2s">'+
         '<div style="font-weight:700;color:var(--ink);font-size:12px">'+d+'</div>'+
         '<div class="qs-label" style="font-size:10px;margin-top:2px;color:var(--muted)">－</div></div>';
     }
     html+='</div>';
-    html+='<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
-      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'白班\')"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>白班</span>'+
-      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'中班\')"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:4px"></i>中班</span>'+
-      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'夜班\')"><i style="width:9px;height:9px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:4px"></i>夜班</span>'+
-      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'休息\')"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>休息</span>'+
-      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'\')">清空</span>'+
+    html+='<div id="dayHint" style="text-align:center;margin-top:8px;font-size:12px;color:var(--muted)">请先点击上方选择一个日期</div>';
+    html+='<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;justify-content:center">'+
+      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'白\')"><i style="width:10px;height:10px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>白</span>'+
+      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'中\')"><i style="width:10px;height:10px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:4px"></i>中</span>'+
+      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'夜\')"><i style="width:10px;height:10px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:4px"></i>夜</span>'+
+      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'休\')"><i style="width:10px;height:10px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>休</span>'+
+      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'\')">清空</span>'+
       '</div>';
     html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
     html+='</div>';
@@ -653,8 +656,9 @@ function ocrSchedPhoto(e){
       cell.addEventListener('touchend',function(){clearTimeout(timer);});
       cell.addEventListener('touchmove',function(){clearTimeout(timer);});
     });
-    /* 开始自动识别 */
-    autoDetectRow(r.result,name);
+    /* 不自动识别名字（识别率低），直接提示用户点击排班行 */
+    var st=document.getElementById('ocrStatus');
+    if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--accent)">👆 请在上方照片上<strong>点一下你的排班行</strong>，系统会自动裁剪并逐格识别</div>';
   };
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
@@ -858,14 +862,37 @@ function mapShiftChar(txt){
   txt=txt.replace(/\s+/g,'').trim();
   return txt;
 }
-/* 快速录入：点击日期切换班次，长按可输入自定义文字 */
-function quickToggleShift(day){
-  var cur=_quickShifts[day]||'';
-  var idx=_quickShiftCycle.indexOf(cur);
-  idx=(idx+1)%_quickShiftCycle.length;
-  var next=_quickShiftCycle[idx];
-  if(next)_quickShifts[day]=next;else delete _quickShifts[day];
-  updateQuickCell(day);
+/* 选中日期 */
+function selectDay(day){
+  _selectedDay=day;
+  /* 清除所有选中样式 */
+  var box=document.getElementById('ocrResult');
+  if(box)box.querySelectorAll('[data-day]').forEach(function(c){
+    c.style.borderColor='var(--rule)';
+    c.style.transform='scale(1)';
+  });
+  /* 高亮选中日期 */
+  var cell=document.getElementById('qd'+day);
+  if(cell){
+    cell.style.borderColor='var(--accent)';
+    cell.style.transform='scale(1.1)';
+  }
+  var hint=document.getElementById('dayHint');
+  if(hint){
+    var s=_quickShifts[day]||'无';
+    hint.innerHTML='已选中第 <strong style="color:var(--accent);font-size:16px">'+day+'</strong> 天，当前班次：<strong style="color:var(--ink)">'+s+'</strong>';
+  }
+}
+/* 设置选中日期的班次 */
+function setDayShift(shift){
+  if(!_selectedDay){toast('请先点击选择一个日期');return;}
+  if(shift){_quickShifts[_selectedDay]=shift;}else{delete _quickShifts[_selectedDay];}
+  updateQuickCell(_selectedDay);
+  var hint=document.getElementById('dayHint');
+  if(hint){
+    var s=_quickShifts[_selectedDay]||'无';
+    hint.innerHTML='已选中第 <strong style="color:var(--accent);font-size:16px">'+_selectedDay+'</strong> 天，当前班次：<strong style="color:var(--ink)">'+s+'</strong>';
+  }
 }
 /* 长按日期弹出输入框，可输入任意班次文字 */
 function quickEditShift(day){
@@ -877,7 +904,7 @@ function quickEditShift(day){
   updateQuickCell(day);
 }
 function updateQuickCell(day){
-  var cell=document.querySelector('#ocrResult [data-day="'+day+'"]');
+  var cell=document.getElementById('qd'+day);
   if(!cell)return;
   var label=cell.querySelector('.qs-label');
   var s=_quickShifts[day]||'';
@@ -886,13 +913,13 @@ function updateQuickCell(day){
     label.style.color='#fff';
     label.style.fontWeight='700';
     cell.style.background=shiftColor(s);
-    cell.style.borderColor=shiftColor(s);
+    if(day!==_selectedDay)cell.style.borderColor=shiftColor(s);
   }else{
     label.textContent='－';
     label.style.color='var(--muted)';
     label.style.fontWeight='400';
     cell.style.background='rgba(255,255,255,.6)';
-    cell.style.borderColor='var(--rule)';
+    if(day!==_selectedDay)cell.style.borderColor='var(--rule)';
   }
 }
 function updateQuickGrid(){
