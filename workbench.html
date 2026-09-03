@@ -449,16 +449,14 @@ function calMove(delta){
 /* ================================================================
    §6 排班模块：照片上传 + OCR 识别
    ================================================================ */
-var shiftList=['白','中','夜','休'];
-/* 班次颜色：根据关键字动态分配，未知字符也有颜色 */
+var shiftList=['责1','责2','责3','责4','责5','中1','中2','中4','夜1','夜2'];
+/* 班次颜色：根据关键字动态分配 */
 function shiftColor(s){
   if(!s)return '#c3b3e8';
-  if(/白/.test(s))return '#9db6e8';
-  if(/早/.test(s))return '#f0b86e';
+  if(/责/.test(s))return '#9db6e8';
   if(/中/.test(s))return '#9bd4c2';
   if(/夜/.test(s))return '#7a6fb0';
   if(/休/.test(s))return '#bcd6a8';
-  if(/备/.test(s))return '#f4a6bd';
   return '#c3b3e8';
 }
 /* 不再做班次标准化，排班表上是什么字就填什么字 */
@@ -477,8 +475,8 @@ function render_schedule(){
     '<input type="file" accept="image/*" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0" onchange="ocrSchedPhoto(event)">'+
     '📷 拍照 / 选择排班照片</label>'+
     '<div id="ocrResult" style="margin-top:12px"></div>'+
-    '<div style="margin-top:14px"><label class="fl">班次图例</label><div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>白</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:5px"></i>中</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:5px"></i>夜</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:5px"></i>休</span></div></div>'+
-    '<div style="margin-top:14px"><label class="fl">手动添加排班</label><div style="display:flex;gap:8px"><input type="date" id="schedDate" class="field" style="flex:1"><input type="text" id="schedShift" class="field" style="flex:1" placeholder="班次(如白/中/夜/休)" list="shiftOptions"><datalist id="shiftOptions"><option>白</option><option>中</option><option>夜</option><option>休</option><option>备</option></datalist><button class="btn primary sm" onclick="addSchedManual()">＋</button></div></div>'+
+    '<div style="margin-top:14px"><label class="fl">班次图例</label><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>责1</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>责2</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>责3</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>责4</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:5px"></i>责5</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:5px"></i>中1</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:5px"></i>中2</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:5px"></i>中4</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:5px"></i>夜1</span><span class="pill"><i style="width:9px;height:9px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:5px"></i>夜2</span></div></div>'+
+    '<div style="margin-top:14px"><label class="fl">手动添加排班</label><div style="display:flex;gap:8px"><input type="date" id="schedDate" class="field" style="flex:1"><input type="text" id="schedShift" class="field" style="flex:1" placeholder="班次" list="shiftOptions"><datalist id="shiftOptions"><option>责1</option><option>责2</option><option>责3</option><option>责4</option><option>责5</option><option>中1</option><option>中2</option><option>中4</option><option>夜1</option><option>夜2</option></datalist><button class="btn primary sm" onclick="addSchedManual()">＋</button></div></div>'+
     '<button class="btn ghost danger sm" style="margin-top:14px" onclick="clearSched()">清空排班</button>'+
     '</div></div>';
 }
@@ -574,7 +572,7 @@ function parseSchedText(text,name){
 /* 临时存储当前 OCR 图片数据 */
 var _ocrImgData='';
 var _quickShifts={};
-var _quickShiftCycle=['','白','中','夜','休'];
+var _quickShiftCycle=['','责1','责2','责3','责4','责5','中1','中2','中4','夜1','夜2'];
 var _selectedDay=0;
 var _cropImg=new Image();
 var _cropStart=null,_cropRect=null,_cropCanvas=null,_cropCtx=null;
@@ -634,11 +632,17 @@ function ocrSchedPhoto(e){
       '<button class="btn ghost sm" onclick="navDay(1)">后一天 ›</button>'+
       '</div>';
     /* 大按钮选择班次 */
-    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">'+
-      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'白\')">白</button>'+
-      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#9bd4c2;color:#fff;border:none" onclick="pickShift(\'中\')">中</button>'+
-      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#7a6fb0;color:#fff;border:none" onclick="pickShift(\'夜\')">夜</button>'+
-      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#bcd6a8;color:#fff;border:none" onclick="pickShift(\'休\')">休</button>'+
+    html+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px">'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'责1\')">责1</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'责2\')">责2</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'责3\')">责3</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'责4\')">责4</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'责5\')">责5</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9bd4c2;color:#fff;border:none" onclick="pickShift(\'中1\')">中1</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9bd4c2;color:#fff;border:none" onclick="pickShift(\'中2\')">中2</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9bd4c2;color:#fff;border:none" onclick="pickShift(\'中4\')">中4</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#7a6fb0;color:#fff;border:none" onclick="pickShift(\'夜1\')">夜1</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#7a6fb0;color:#fff;border:none" onclick="pickShift(\'夜2\')">夜2</button>'+
       '</div>';
     /* 自定义输入 + 清空 */
     html+='<div style="display:flex;gap:6px;margin-bottom:6px">'+
