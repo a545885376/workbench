@@ -563,6 +563,8 @@ function parseSchedText(text,name){
 var _ocrImgData='';
 var _quickShifts={};
 var _quickShiftCycle=['','白班','中班','夜班','休息'];
+var _cropImg=new Image();
+var _cropStart=null,_cropRect=null,_cropCanvas=null,_cropCtx=null;
 function ocrSchedPhoto(e){
   var input=e.target;
   var f=input.files&&input.files[0];if(!f)return;
@@ -595,18 +597,26 @@ function ocrSchedPhoto(e){
       });
     return;
   }
-  /* 无后端时：显示照片 + 快速录入网格 + 尝试本地 OCR */
+  /* 无后端：显示照片 + 框选识别 + 快速录入网格 */
   var r=new FileReader();
   r.onload=function(){
     _ocrImgData=r.result;
     _quickShifts={};
     var y=window._sc.y,mo=window._sc.mo;
     var daysInMonth=new Date(y,mo+1,0).getDate();
-    var html='<div style="text-align:center;margin-bottom:10px"><img src="'+r.result+'" style="max-width:100%;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>'+
-      '<div id="ocrStatus" style="text-align:center;padding:8px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在尝试自动识别…</span></div>'+
-      '<div id="ocrParsed" style="margin-top:8px"></div>'+
-      '<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
-      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 对照上方照片，点击对应日期设置班次（可反复点击切换）</div>';
+    var html='<div class="sec-tip" style="margin-bottom:10px;border-color:var(--accent)">👆 请在下方照片上，用手指<strong>拖动画一个框</strong>，选中你的那一行排班（从第1天划到最后一天），系统会逐格识别</div>';
+    html+='<div style="position:relative;border-radius:12px;overflow:hidden;border:2px solid var(--rule);margin-bottom:10px">'+
+      '<canvas id="cropCanvas" style="display:block;width:100%;touch-action:none"></canvas>'+
+      '<div id="cropHint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.5);color:#fff;padding:8px 14px;border-radius:20px;font-size:13px;pointer-events:none">👆 在照片上拖动选中你的排班行</div>'+
+      '</div>';
+    html+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
+      '<button class="btn primary sm" onclick="startCropOCR()">🔍 识别框选区域</button>'+
+      '<button class="btn ghost sm" onclick="resetCrop()">重新框选</button>'+
+      '</div>';
+    html+='<div id="ocrStatus" style="margin-bottom:8px"></div>';
+    html+='<div id="ocrParsed" style="margin-top:8px"></div>';
+    html+='<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
+      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 也可手动点击日期设置班次（可反复点击切换）</div>';
     html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
     for(var d=1;d<=daysInMonth;d++){
       html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
@@ -622,52 +632,173 @@ function ocrSchedPhoto(e){
     html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
     html+='</div>';
     box.innerHTML=html;
-    /* 后台尝试 OCR 预填 */
-    tryAutoOCR(r.result,name);
+    /* 初始化裁剪画布 */
+    initCropCanvas(r.result);
   };
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
   input.value='';
 }
-/* 尝试自动 OCR（预处理图片后识别） */
-function tryAutoOCR(imgData,name){
+/* 初始化裁剪画布 */
+function initCropCanvas(imgSrc){
+  _cropImg=new Image();
+  _cropImg.onload=function(){
+    var canvas=document.getElementById('cropCanvas');
+    if(!canvas)return;
+    var maxW=canvas.parentElement.offsetWidth||400;
+    var scale=Math.min(1,maxW/_cropImg.width);
+    canvas.width=_cropImg.width*scale;
+    canvas.height=_cropImg.height*scale;
+    _cropScale=scale;
+    _cropCtx=canvas.getContext('2d');
+    _cropCtx.drawImage(_cropImg,0,0,canvas.width,canvas.height);
+    _cropCanvas=canvas;
+    _cropRect=null;
+    /* 触摸/鼠标事件 */
+    var isDrawing=false;
+    function getPos(e){
+      var rect=canvas.getBoundingClientRect();
+      var t=e.touches?e.touches[0]:e;
+      return {x:(t.clientX-rect.left)*(canvas.width/rect.width),y:(t.clientY-rect.top)*(canvas.height/rect.height)};
+    }
+    function start(e){e.preventDefault();isDrawing=true;_cropStart=getPos(e);var h=document.getElementById('cropHint');if(h)h.style.display='none';}
+    function move(e){
+      if(!isDrawing)return;e.preventDefault();
+      var p=getPos(e);
+      _cropRect={x:Math.min(_cropStart.x,p.x),y:Math.min(_cropStart.y,p.y),w:Math.abs(p.x-_cropStart.x),h:Math.abs(p.y-_cropStart.y)};
+      _cropCtx.clearRect(0,0,canvas.width,canvas.height);
+      _cropCtx.drawImage(_cropImg,0,0,canvas.width,canvas.height);
+      /* 遮罩 */
+      _cropCtx.fillStyle='rgba(0,0,0,0.5)';
+      _cropCtx.fillRect(0,0,canvas.width,canvas.height);
+      /* 挖出选区 */
+      _cropCtx.globalCompositeOperation='destination-out';
+      _cropCtx.fillStyle='#000';
+      _cropCtx.fillRect(_cropRect.x,_cropRect.y,_cropRect.w,_cropRect.h);
+      _cropCtx.globalCompositeOperation='source-over';
+      /* 重绘选区内容 */
+      _cropCtx.drawImage(_cropImg,_cropRect.x/_cropScale,_cropRect.y/_cropScale,_cropRect.w/_cropScale,_cropRect.h/_cropScale,_cropRect.x,_cropRect.y,_cropRect.w,_cropRect.h);
+      /* 选区边框 */
+      _cropCtx.strokeStyle='#e89bb8';_cropCtx.lineWidth=3;_cropCtx.setLineDash([8,4]);
+      _cropCtx.strokeRect(_cropRect.x,_cropRect.y,_cropRect.w,_cropRect.h);
+      _cropCtx.setLineDash([]);
+    }
+    function end(e){e.preventDefault();isDrawing=false;}
+    canvas.addEventListener('mousedown',start);
+    canvas.addEventListener('mousemove',move);
+    canvas.addEventListener('mouseup',end);
+    canvas.addEventListener('mouseleave',end);
+    canvas.addEventListener('touchstart',start,{passive:false});
+    canvas.addEventListener('touchmove',move,{passive:false});
+    canvas.addEventListener('touchend',end,{passive:false});
+  };
+  _cropImg.src=imgSrc;
+}
+var _cropScale=1;
+function resetCrop(){
+  if(!_cropCanvas||!_cropImg)return;
+  _cropRect=null;
+  _cropCtx.clearRect(0,0,_cropCanvas.width,_cropCanvas.height);
+  _cropCtx.drawImage(_cropImg,0,0,_cropCanvas.width,_cropCanvas.height);
+  var h=document.getElementById('cropHint');if(h)h.style.display='';
+  var st=document.getElementById('ocrStatus');if(st)st.innerHTML='';
+}
+/* 框选区域逐格 OCR */
+function startCropOCR(){
+  if(!_cropRect||_cropRect.w<20||_cropRect.h<5){
+    toast('请先在照片上拖动框选你的排班行');
+    return;
+  }
+  var y=window._sc.y,mo=window._sc.mo;
+  var daysInMonth=new Date(y,mo+1,0).getDate();
+  var st=document.getElementById('ocrStatus');
+  if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在逐格识别…（首次加载约10秒）</span></div>';
+  /* 从原图裁剪选区 */
+  var sx=_cropRect.x/_cropScale,sy=_cropRect.y/_cropScale,sw=_cropRect.w/_cropScale,sh=_cropRect.h/_cropScale;
   loadTesseract(function(Tesseract){
-    var st=document.getElementById('ocrStatus');
-    if(st)st.innerHTML='<span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在预处理图片…</span>';
-    preprocessImage(imgData,function(processedData){
-      if(st)st.innerHTML='<span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别排班…（首次约10-20秒）</span>';
-      Tesseract.recognize(processedData,'chi_sim',{
-        logger:function(m){
-          var s=document.getElementById('ocrStatus');
-          if(s&&m.status){
-            var pct=m.progress?Math.round(m.progress*100)+'%':'';
-            s.innerHTML='<span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">'+m.status+'…'+pct+'</span>';
-          }
-        }
-      }).then(function(result){
-        var rawText=result.data.text||'';
-        var parsed=parseSchedText(rawText,name);
-        var count=Object.keys(parsed).length;
-        var st2=document.getElementById('ocrStatus');
-        if(count>0){
-          /* 自动预填快速录入网格 */
-          Object.keys(parsed).forEach(function(day){
-            _quickShifts[parseInt(day)]=parsed[day];
-          });
-          updateQuickGrid();
-          if(st2)st2.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 自动识别到 '+count+' 条排班，已预填到下方网格，请核对后确认</div>';
-        }else{
-          if(st2)st2.innerHTML='<div class="sec-tip">自动识别未成功，请对照照片在下方网格中点击设置班次</div>';
-        }
-      }).catch(function(){
-        var s=document.getElementById('ocrStatus');
-        if(s)s.innerHTML='<div class="sec-tip">自动识别未成功，请对照照片在下方网格中点击设置班次</div>';
-      });
-    });
+    /* 将选区分成 daysInMonth 等份，逐格识别 */
+    var cellW=sw/daysInMonth;
+    var cellImgs=[];
+    for(var d=1;d<=daysInMonth;d++){
+      var cx=sx+(d-1)*cellW;
+      /* 每格裁剪 + 放大3倍 + 灰度二值化 */
+      var c=document.createElement('canvas');
+      var upscale=4;
+      c.width=Math.max(cellW*upscale,40);
+      c.height=Math.max(sh*upscale,40);
+      var ctx=c.getContext('2d');
+      ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+      ctx.drawImage(_cropImg,cx,sy,cellW,sh,2,2,c.width-4,c.height-4);
+      /* 灰度+对比度 */
+      var id=ctx.getImageData(0,0,c.width,c.height);
+      var dd=id.data;
+      var contrast=2.0,adj=128*(1-contrast);
+      for(var i=0;i<dd.length;i+=4){
+        var g=0.299*dd[i]+0.587*dd[i+1]+0.114*dd[i+2];
+        g=g*contrast+adj;
+        g=g>130?255:0;
+        dd[i]=dd[i+1]=dd[i+2]=g;
+      }
+      ctx.putImageData(id,0,0);
+      cellImgs.push({day:d,dataUrl:c.toDataURL('image/png')});
+    }
+    /* 逐格 OCR */
+    var results={};
+    var idx=0;
+    function ocrNext(){
+      if(idx>=cellImgs.length){
+        /* 完成，填入网格 */
+        var count=0;
+        Object.keys(results).forEach(function(day){
+          var s=results[day];
+          if(s){_quickShifts[parseInt(day)]=s;count++;}
+        });
+        updateQuickGrid();
+        if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--ok)">✅ 逐格识别完成，识别到 '+count+' 条排班，已预填到下方网格，请核对后确认</div>';
+        return;
+      }
+      var ci=cellImgs[idx];
+      var progress=Math.round((idx/cellImgs.length)*100);
+      if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别第'+ci.day+'天… ('+progress+'%)</span></div>';
+      Tesseract.recognize(ci.dataUrl,'chi_sim',{logger:function(){}})
+        .then(function(res){
+          var txt=(res.data.text||'').trim();
+          /* 识别结果映射：什么字就填什么字 */
+          var mapped=mapShiftChar(txt);
+          if(mapped)results[ci.day]=mapped;
+          idx++;ocrNext();
+        })
+        .catch(function(){idx++;ocrNext();});
+    }
+    ocrNext();
   },function(){
-    var s=document.getElementById('ocrStatus');
-    if(s)s.innerHTML='<div class="sec-tip">OCR引擎加载失败，请对照照片在下方网格中点击设置班次</div>';
+    if(st)st.innerHTML='<div class="sec-tip">OCR引擎加载失败，请检查网络后重试，或手动点击网格设置班次</div>';
   });
+}
+/* 班次字符映射：把 OCR 识别的各种可能映射成标准班次名 */
+function mapShiftChar(txt){
+  if(!txt)return '';
+  txt=txt.replace(/\s+/g,'').trim();
+  if(!txt)return '';
+  /* 标准班次 */
+  if(/白/.test(txt))return '白班';
+  if(/中/.test(txt))return '中班';
+  if(/夜/.test(txt))return '夜班';
+  if(/休/.test(txt))return '休息';
+  if(/备/.test(txt))return '备班';
+  if(/早/.test(txt))return '早班';
+  /* 常见 OCR 误识别修正 */
+  if(/臼|曰|日|百|怕|伯|拍/.test(txt))return '白班';
+  if(/虫|申|串|肿|钟|钟|口/.test(txt))return '中班';
+  if(/液|冶|也|谁|准|校/.test(txt))return '夜班';
+  if(/体|本|沐|休|估|桔/.test(txt))return '休息';
+  if(/各|路|备|令/.test(txt))return '备班';
+  /* 如果是单个汉字但不在已知班次中，直接返回原字 */
+  if(txt.length<=2)return txt;
+  /* 如果有多个字符，尝试提取第一个有效字符 */
+  var m=txt.match(/(白|中|夜|休|备|早|臼|虫|液|体)/);
+  if(m)return mapShiftChar(m[1]);
+  return '';
 }
 /* 快速录入：点击日期切换班次 */
 function quickToggleShift(day){
