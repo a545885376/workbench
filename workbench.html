@@ -449,7 +449,7 @@ function calMove(delta){
 /* ================================================================
    §6 排班模块：照片上传 + OCR 识别
    ================================================================ */
-var shiftList=['责1','责2','责3','责4','责5','中1','中2','中4','夜1','夜2'];
+var shiftList=['责1','责2','责3','责4','责5','中1','中2','中4','夜1','夜2','休'];
 /* 班次颜色：根据关键字动态分配 */
 function shiftColor(s){
   if(!s)return '#c3b3e8';
@@ -643,6 +643,7 @@ function ocrSchedPhoto(e){
       '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#9bd4c2;color:#fff;border:none" onclick="pickShift(\'中4\')">中4</button>'+
       '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#7a6fb0;color:#fff;border:none" onclick="pickShift(\'夜1\')">夜1</button>'+
       '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#7a6fb0;color:#fff;border:none" onclick="pickShift(\'夜2\')">夜2</button>'+
+      '<button class="btn" style="padding:12px 2px;font-size:15px;font-weight:700;background:#bcd6a8;color:#fff;border:none" onclick="pickShift(\'休\')">休</button>'+
       '</div>';
     /* 自定义输入 + 清空 */
     html+='<div style="display:flex;gap:6px;margin-bottom:6px">'+
