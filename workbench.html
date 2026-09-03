@@ -610,21 +610,22 @@ function ocrSchedPhoto(e){
       });
     return;
   }
-  /* 无后端：显示照片 + 高效对照录入 */
+  /* 无后端：显示照片（可双指缩放）+ 直接录入到主日历 */
   var r=new FileReader();
   r.onload=function(){
-    _ocrImgData=r.result;
     _quickShifts={};
     _selectedDay=1;
     var y=window._sc.y,mo=window._sc.mo;
     var daysInMonth=new Date(y,mo+1,0).getDate();
     var html='';
-    /* 照片显示，可双指缩放 */
+    /* 照片显示，支持双指缩放 */
     html+='<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:2px solid var(--rule);position:relative">'+
-      '<div id="photoScroll" style="max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch;position:relative">'+
-      '<img id="schedPhoto" src="'+r.result+'" style="width:100%;min-width:320px;display:block">'+
-      '</div></div>';
-    /* 对照录入区 */
+      '<div id="photoScroll" style="overflow:auto;-webkit-overflow-scrolling:touch;position:relative;text-align:center;background:#f5f5f5">'+
+      '<img id="schedPhoto" src="'+r.result+'" style="max-width:100%;display:block;margin:0 auto;touch-action:pan-x pan-y pinch-zoom">'+
+      '</div>'+
+      '<div style="text-align:center;padding:4px;font-size:11px;color:var(--muted);background:rgba(255,255,255,.8)">双指可缩放图片</div>'+
+      '</div>';
+    /* 录入区：直接写入主日历 */
     html+='<div style="padding:12px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">';
     /* 当前录入的天数显示 */
     html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
@@ -641,21 +642,11 @@ function ocrSchedPhoto(e){
       '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#f4a6bd;color:#fff;border:none" onclick="pickShift(\'备\')">备</button>'+
       '</div>';
     /* 自定义输入 + 清空 */
-    html+='<div style="display:flex;gap:6px;margin-bottom:10px">'+
+    html+='<div style="display:flex;gap:6px;margin-bottom:6px">'+
       '<input type="text" id="customShift" class="field" style="flex:1;text-align:center;font-size:16px" placeholder="输入自定义班次文字" onkeyup="if(event.key===\'Enter\')pickCustomShift()">'+
       '<button class="btn primary sm" onclick="pickCustomShift()">确定</button>'+
-      '<button class="btn ghost sm" onclick="pickShift(\'\')" style="color:var(--warn)">清空</button>'+
+      '<button class="btn ghost sm" onclick="pickShift(\'\')" style="color:var(--warn)">清空当天</button>'+
       '</div>';
-    /* 全部日期网格概览 */
-    html+='<div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px">📊 全月概览（点击跳转到对应天）</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
-    for(var d=1;d<=daysInMonth;d++){
-      html+='<div id="qd'+d+'" data-day="'+d+'" onclick="gotoDay('+d+')" style="text-align:center;padding:5px 1px;border-radius:6px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:10px;transition:all .15s">'+
-        '<div style="font-weight:700;color:var(--ink);font-size:11px">'+d+'</div>'+
-        '<div class="qs-label" style="font-size:9px;margin-top:1px;color:var(--muted)">－</div></div>';
-    }
-    html+='</div>';
-    html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
     html+='</div>';
     box.innerHTML=html;
     updateCurrentDayLabel();
@@ -678,21 +669,32 @@ function gotoDay(day){
   _selectedDay=day;
   updateCurrentDayLabel();
 }
-/* 选择班次（自动跳到下一天） */
+/* 选择班次：直接写入主日历并刷新 */
 function pickShift(shift){
   if(!_selectedDay)return;
-  if(shift){_quickShifts[_selectedDay]=shift;}else{delete _quickShifts[_selectedDay];}
-  updateQuickCell(_selectedDay);
+  var y=window._sc.y,mo=window._sc.mo;
+  var ds=y+'-'+pad(mo+1)+'-'+pad(_selectedDay);
+  var data=DB.get('schedule',{shifts:{}});
+  if(shift){data.shifts[ds]=shift;}else{delete data.shifts[ds];}
+  DB.set('schedule',data);
+  /* 刷新主日历 */
+  var cal=calHtml(y,mo,function(d,cell){var s=data.shifts[d];if(s){var dot=document.createElement('div');dot.className='dot';dot.style.background=shiftColor(s);dot.textContent=s;cell.appendChild(dot);}});
+  var calBox=document.getElementById('schedCal');if(calBox)calBox.innerHTML=cal;
   /* 自动跳到下一天 */
   navDay(1);
-  updateCurrentDayLabel();
 }
-/* 自定义班次 */
+/* 自定义班次：直接写入主日历 */
 function pickCustomShift(){
   var el=document.getElementById('customShift');
   if(!el||!el.value.trim())return;
-  _quickShifts[_selectedDay]=el.value.trim();
-  updateQuickCell(_selectedDay);
+  var y=window._sc.y,mo=window._sc.mo;
+  var ds=y+'-'+pad(mo+1)+'-'+pad(_selectedDay);
+  var data=DB.get('schedule',{shifts:{}});
+  data.shifts[ds]=el.value.trim();
+  DB.set('schedule',data);
+  /* 刷新主日历 */
+  var cal=calHtml(y,mo,function(d,cell){var s=data.shifts[d];if(s){var dot=document.createElement('div');dot.className='dot';dot.style.background=shiftColor(s);dot.textContent=s;cell.appendChild(dot);}});
+  var calBox=document.getElementById('schedCal');if(calBox)calBox.innerHTML=cal;
   el.value='';
   navDay(1);
 }
@@ -700,25 +702,12 @@ function pickCustomShift(){
 function updateCurrentDayLabel(){
   var y=window._sc.y,mo=window._sc.mo;
   var daysInMonth=new Date(y,mo+1,0).getDate();
+  var ds=y+'-'+pad(mo+1)+'-'+pad(_selectedDay);
+  var data=DB.get('schedule',{shifts:{}});
+  var s=data.shifts[ds]||'未设置';
   var el=document.getElementById('currentDayLabel');
   if(el){
-    var s=_quickShifts[_selectedDay]||'未设置';
     el.innerHTML='第 '+_selectedDay+' 天 <span style="font-size:13px;color:var(--muted)">/ '+daysInMonth+'</span> <span style="font-size:14px;color:'+(s==='未设置'?'var(--warn)':'var(--ok)')+'">'+s+'</span>';
-  }
-  /* 高亮网格中的当前天 */
-  for(var d=1;d<=daysInMonth;d++){
-    var cell=document.getElementById('qd'+d);
-    if(cell){
-      if(d===_selectedDay){
-        cell.style.borderColor='var(--accent)';
-        cell.style.transform='scale(1.08)';
-        cell.style.boxShadow='0 2px 8px rgba(232,155,184,.4)';
-      }else{
-        cell.style.borderColor='var(--rule)';
-        cell.style.transform='scale(1)';
-        cell.style.boxShadow='none';
-      }
-    }
   }
 }
 /* 自动识别全图，找到姓名所在行，裁剪并逐格 OCR */
