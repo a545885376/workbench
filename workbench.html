@@ -573,7 +573,7 @@ function parseSchedText(text,name){
 /* 临时存储当前 OCR 图片数据 */
 var _ocrImgData='';
 var _quickShifts={};
-var _quickShiftCycle=['','白','中','夜','休'];
+var _quickShiftCycle=['','白班','中班','夜班','休息'];
 var _cropImg=new Image();
 var _cropStart=null,_cropRect=null,_cropCanvas=null,_cropCtx=null;
 function ocrSchedPhoto(e){
@@ -616,14 +616,17 @@ function ocrSchedPhoto(e){
     var y=window._sc.y,mo=window._sc.mo;
     var daysInMonth=new Date(y,mo+1,0).getDate();
     var html='';
-    /* 照片放大显示，可滚动查看 */
-    html+='<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:2px solid var(--rule);position:relative">'+
-      '<div style="max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch">'+
-      '<img src="'+r.result+'" style="width:100%;min-width:320px;display:block"></div></div>';
+    /* 照片放大显示，可点击选择排班行 */
+    html+='<div id="photoWrap" style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:2px solid var(--rule);position:relative">'+
+      '<div style="max-height:350px;overflow:auto;-webkit-overflow-scrolling:touch;position:relative">'+
+      '<img id="schedPhoto" src="'+r.result+'" style="width:100%;min-width:320px;display:block;cursor:crosshair" onclick="photoTapSelectRow(event)">'+
+      '</div>'+
+      '<div id="photoHint" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;pointer-events:none;white-space:nowrap">自动识别中… 如果找不到名字，请点一下你的排班行</div>'+
+      '</div>';
     html+='<div id="ocrStatus" style="margin-bottom:8px"></div>';
     html+='<div id="ocrParsed" style="margin-top:8px"></div>';
     html+='<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
-      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 也可手动点击日期设置班次（长按可输入自定义文字）</div>';
+      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 点击日期设置班次（长按可输入自定义文字）</div>';
     html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
     for(var d=1;d<=daysInMonth;d++){
       html+='<div data-day="'+d+'" onclick="quickToggleShift('+d+')" oncontextmenu="event.preventDefault();quickEditShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:11px">'+
@@ -631,10 +634,12 @@ function ocrSchedPhoto(e){
         '<div class="qs-label" style="font-size:10px;margin-top:2px;color:var(--muted)">－</div></div>';
     }
     html+='</div>';
-    html+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
-      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'白\')"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>全部白</span>'+
-      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'休\')"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>全部休</span>'+
-      '<span class="pill" style="cursor:pointer" onclick="quickFillAll(\'\')">全部清空</span>'+
+    html+='<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
+      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'白班\')"><i style="width:9px;height:9px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>白班</span>'+
+      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'中班\')"><i style="width:9px;height:9px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:4px"></i>中班</span>'+
+      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'夜班\')"><i style="width:9px;height:9px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:4px"></i>夜班</span>'+
+      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'休息\')"><i style="width:9px;height:9px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>休息</span>'+
+      '<span class="pill" style="cursor:pointer;padding:6px 12px" onclick="quickFillAll(\'\')">清空</span>'+
       '</div>';
     html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
     html+='</div>';
@@ -654,6 +659,29 @@ function ocrSchedPhoto(e){
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
   input.value='';
+}
+/* 点击照片选择排班行 */
+function photoTapSelectRow(e){
+  var img=document.getElementById('schedPhoto');
+  if(!img||!_fullImg)return;
+  var rect=img.getBoundingClientRect();
+  var clickY=e.clientY-rect.top;
+  /* 转换到原图坐标 */
+  var ratio=_fullImg.height/rect.height;
+  var origY=clickY*ratio;
+  /* 在图片上画一条线标记选中的行 */
+  var hint=document.getElementById('photoHint');
+  if(hint)hint.style.display='none';
+  var st=document.getElementById('ocrStatus');
+  if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别你点击的排班行…</span></div>';
+  /* 构造一个假的 nameBbox，y 范围为点击位置上下各一行高的一半 */
+  var rowH=_fullImg.height/20; /* 估算行高 */
+  var nameBbox={x0:0,y0:Math.max(0,origY-rowH/2),x1:_fullImg.width*0.25,y1:Math.min(_fullImg.height,origY+rowH/2)};
+  loadTesseract(function(Tesseract){
+    doRowOCR(_ocrImgData,nameBbox,Tesseract,st);
+  },function(){
+    if(st)st.innerHTML='<div class="sec-tip">OCR引擎加载失败，请手动点击下方网格设置班次</div>';
+  });
 }
 /* 自动识别全图，找到姓名所在行，裁剪并逐格 OCR */
 var _fullImg=new Image();
@@ -734,11 +762,15 @@ function autoDetectRow(imgData,name){
               if(st)st.innerHTML='<div class="sec-tip">未精确找到"'+name+'"，但找到姓氏"'+surname+'"，尝试识别该行…</div>';
               doRowOCR(imgData,surnamedBbox,Tesseract,st);
             }else{
-              if(st)st.innerHTML='<div class="sec-tip">未找到"'+name+'"，请确保姓名框输入正确，或手动点击下方网格设置班次</div>';
+              if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--warn)">⚠️ 未找到"'+name+'"。请在上方照片上<strong>点一下你的排班行</strong>，系统会识别你点的那一行</div>';
+              var hint=document.getElementById('photoHint');
+              if(hint){hint.textContent='👆 点击你的排班行（点那一行任意位置）';hint.style.background='rgba(232,155,184,.85)';}
             }
           }
         }).catch(function(){
-          if(st)st.innerHTML='<div class="sec-tip">全图识别失败，请手动点击下方网格设置班次</div>';
+          if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--warn)">⚠️ 全图识别失败。请在上方照片上<strong>点一下你的排班行</strong>，系统会识别你点的那一行</div>';
+          var hint=document.getElementById('photoHint');
+          if(hint){hint.textContent='👆 点击你的排班行（点那一行任意位置）';hint.style.background='rgba(232,155,184,.85)';}
         });
       });
     },function(){
@@ -757,8 +789,9 @@ function doRowOCR(imgData,nameBbox,Tesseract,st){
   var rowY0=Math.max(0,nameBbox.y0-5);
   var rowY1=Math.min(imgH,nameBbox.y1+5);
   var rowH=rowY1-rowY0;
-  /* 数据区域 x 范围：从姓名右侧到图片右边缘 */
-  var dataX0=nameBbox.x1+2;
+  /* 数据区域 x 范围：自动判断 - 如果 nameBbox 横向占比小（姓名列），从其右侧开始；否则从图片左侧开始 */
+  var nameRowRatio=(nameBbox.x1-nameBbox.x0)/imgW;
+  var dataX0=nameRowRatio<0.3?(nameBbox.x1+2):0;
   var dataX1=imgW;
   var dataW=dataX1-dataX0;
   /* 显示裁剪后的排班行（放大） */
