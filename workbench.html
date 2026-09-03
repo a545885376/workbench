@@ -610,82 +610,116 @@ function ocrSchedPhoto(e){
       });
     return;
   }
-  /* 无后端：显示照片 + 自动识别姓名行 + 逐格识别 + 快速录入网格 */
+  /* 无后端：显示照片 + 高效对照录入 */
   var r=new FileReader();
   r.onload=function(){
     _ocrImgData=r.result;
     _quickShifts={};
+    _selectedDay=1;
     var y=window._sc.y,mo=window._sc.mo;
     var daysInMonth=new Date(y,mo+1,0).getDate();
     var html='';
-    /* 照片放大显示，可点击选择排班行 */
-    html+='<div id="photoWrap" style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:2px solid var(--rule);position:relative">'+
-      '<div style="max-height:350px;overflow:auto;-webkit-overflow-scrolling:touch;position:relative">'+
-      '<img id="schedPhoto" src="'+r.result+'" style="width:100%;min-width:320px;display:block;cursor:crosshair" onclick="photoTapSelectRow(event)">'+
-      '</div>'+
-      '<div id="photoHint" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(232,155,184,.85);color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;pointer-events:none;white-space:nowrap;animation:pulse 1.5s infinite">👆 点一下你的排班行（点那一行任意位置）</div>'+
+    /* 照片显示，可双指缩放 */
+    html+='<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:2px solid var(--rule);position:relative">'+
+      '<div id="photoScroll" style="max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch;position:relative">'+
+      '<img id="schedPhoto" src="'+r.result+'" style="width:100%;min-width:320px;display:block">'+
+      '</div></div>';
+    /* 对照录入区 */
+    html+='<div style="padding:12px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">';
+    /* 当前录入的天数显示 */
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+      '<button class="btn ghost sm" onclick="navDay(-1)">‹ 前一天</button>'+
+      '<div id="currentDayLabel" style="font-size:16px;font-weight:700;color:var(--ink)"></div>'+
+      '<button class="btn ghost sm" onclick="navDay(1)">后一天 ›</button>'+
       '</div>';
-    html+='<div id="ocrStatus" style="margin-bottom:8px"></div>';
-    html+='<div id="ocrParsed" style="margin-top:8px"></div>';
-    html+='<div style="margin-top:12px;padding:10px;border:1px solid var(--rule);border-radius:14px;background:rgba(255,255,255,.5)">'+
-      '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px">📋 先点日期选中，再点下方按钮设置班次（长按可输入自定义文字）</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">';
+    /* 大按钮选择班次 */
+    html+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px">'+
+      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#9db6e8;color:#fff;border:none" onclick="pickShift(\'白\')">白</button>'+
+      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#9bd4c2;color:#fff;border:none" onclick="pickShift(\'中\')">中</button>'+
+      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#7a6fb0;color:#fff;border:none" onclick="pickShift(\'夜\')">夜</button>'+
+      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#bcd6a8;color:#fff;border:none" onclick="pickShift(\'休\')">休</button>'+
+      '<button class="btn" style="padding:14px 4px;font-size:18px;font-weight:700;background:#f4a6bd;color:#fff;border:none" onclick="pickShift(\'备\')">备</button>'+
+      '</div>';
+    /* 自定义输入 + 清空 */
+    html+='<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<input type="text" id="customShift" class="field" style="flex:1;text-align:center;font-size:16px" placeholder="输入自定义班次文字" onkeyup="if(event.key===\'Enter\')pickCustomShift()">'+
+      '<button class="btn primary sm" onclick="pickCustomShift()">确定</button>'+
+      '<button class="btn ghost sm" onclick="pickShift(\'\')" style="color:var(--warn)">清空</button>'+
+      '</div>';
+    /* 全部日期网格概览 */
+    html+='<div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px">📊 全月概览（点击跳转到对应天）</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
     for(var d=1;d<=daysInMonth;d++){
-      html+='<div id="qd'+d+'" data-day="'+d+'" onclick="selectDay('+d+')" oncontextmenu="event.preventDefault();quickEditShift('+d+')" style="text-align:center;padding:6px 2px;border-radius:8px;background:rgba(255,255,255,.6);border:2px solid var(--rule);cursor:pointer;font-size:11px;transition:all .2s">'+
-        '<div style="font-weight:700;color:var(--ink);font-size:12px">'+d+'</div>'+
-        '<div class="qs-label" style="font-size:10px;margin-top:2px;color:var(--muted)">－</div></div>';
+      html+='<div id="qd'+d+'" data-day="'+d+'" onclick="gotoDay('+d+')" style="text-align:center;padding:5px 1px;border-radius:6px;background:rgba(255,255,255,.6);border:1px solid var(--rule);cursor:pointer;font-size:10px;transition:all .15s">'+
+        '<div style="font-weight:700;color:var(--ink);font-size:11px">'+d+'</div>'+
+        '<div class="qs-label" style="font-size:9px;margin-top:1px;color:var(--muted)">－</div></div>';
     }
     html+='</div>';
-    html+='<div id="dayHint" style="text-align:center;margin-top:8px;font-size:12px;color:var(--muted)">请先点击上方选择一个日期</div>';
-    html+='<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;justify-content:center">'+
-      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'白\')"><i style="width:10px;height:10px;border-radius:3px;background:#9db6e8;display:inline-block;margin-right:4px"></i>白</span>'+
-      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'中\')"><i style="width:10px;height:10px;border-radius:3px;background:#9bd4c2;display:inline-block;margin-right:4px"></i>中</span>'+
-      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'夜\')"><i style="width:10px;height:10px;border-radius:3px;background:#7a6fb0;display:inline-block;margin-right:4px"></i>夜</span>'+
-      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'休\')"><i style="width:10px;height:10px;border-radius:3px;background:#bcd6a8;display:inline-block;margin-right:4px"></i>休</span>'+
-      '<span class="pill" style="cursor:pointer;padding:8px 14px;font-size:14px" onclick="setDayShift(\'\')">清空</span>'+
-      '</div>';
     html+='<button class="btn primary btn-block" style="margin-top:10px" onclick="confirmQuickSched()">✅ 确认同步到日历</button>';
     html+='</div>';
     box.innerHTML=html;
-    /* 给网格单元格添加触摸长按支持 */
-    box.querySelectorAll('[data-day]').forEach(function(cell){
-      var day=parseInt(cell.dataset.day),timer=null;
-      cell.addEventListener('touchstart',function(e){
-        timer=setTimeout(function(){e.preventDefault();quickEditShift(day);},600);
-      },{passive:true});
-      cell.addEventListener('touchend',function(){clearTimeout(timer);});
-      cell.addEventListener('touchmove',function(){clearTimeout(timer);});
-    });
-    /* 不自动识别名字（识别率低），直接提示用户点击排班行 */
-    var st=document.getElementById('ocrStatus');
-    if(st)st.innerHTML='<div class="sec-tip" style="border-color:var(--accent)">👆 请在上方照片上<strong>点一下你的排班行</strong>，系统会自动裁剪并逐格识别</div>';
+    updateCurrentDayLabel();
   };
   r.onerror=function(){box.innerHTML='<div class="sec-tip">图片读取失败，请重试</div>';};
   r.readAsDataURL(f);
   input.value='';
 }
-/* 点击照片选择排班行 */
-function photoTapSelectRow(e){
-  var img=document.getElementById('schedPhoto');
-  if(!img||!_fullImg)return;
-  var rect=img.getBoundingClientRect();
-  var clickY=e.clientY-rect.top;
-  /* 转换到原图坐标 */
-  var ratio=_fullImg.height/rect.height;
-  var origY=clickY*ratio;
-  /* 在图片上画一条线标记选中的行 */
-  var hint=document.getElementById('photoHint');
-  if(hint)hint.style.display='none';
-  var st=document.getElementById('ocrStatus');
-  if(st)st.innerHTML='<div style="text-align:center;padding:10px"><span class="sync-spin"></span> <span style="font-size:13px;color:var(--muted)">正在识别你点击的排班行…</span></div>';
-  /* 构造一个假的 nameBbox，y 范围为点击位置上下各一行高的一半 */
-  var rowH=_fullImg.height/20; /* 估算行高 */
-  var nameBbox={x0:0,y0:Math.max(0,origY-rowH/2),x1:_fullImg.width*0.25,y1:Math.min(_fullImg.height,origY+rowH/2)};
-  loadTesseract(function(Tesseract){
-    doRowOCR(_ocrImgData,nameBbox,Tesseract,st);
-  },function(){
-    if(st)st.innerHTML='<div class="sec-tip">OCR引擎加载失败，请手动点击下方网格设置班次</div>';
-  });
+/* 导航到前一天/后一天 */
+function navDay(delta){
+  var y=window._sc.y,mo=window._sc.mo;
+  var daysInMonth=new Date(y,mo+1,0).getDate();
+  _selectedDay+=delta;
+  if(_selectedDay<1)_selectedDay=daysInMonth;
+  if(_selectedDay>daysInMonth)_selectedDay=1;
+  updateCurrentDayLabel();
+}
+/* 跳转到指定天 */
+function gotoDay(day){
+  _selectedDay=day;
+  updateCurrentDayLabel();
+}
+/* 选择班次（自动跳到下一天） */
+function pickShift(shift){
+  if(!_selectedDay)return;
+  if(shift){_quickShifts[_selectedDay]=shift;}else{delete _quickShifts[_selectedDay];}
+  updateQuickCell(_selectedDay);
+  /* 自动跳到下一天 */
+  navDay(1);
+  updateCurrentDayLabel();
+}
+/* 自定义班次 */
+function pickCustomShift(){
+  var el=document.getElementById('customShift');
+  if(!el||!el.value.trim())return;
+  _quickShifts[_selectedDay]=el.value.trim();
+  updateQuickCell(_selectedDay);
+  el.value='';
+  navDay(1);
+}
+/* 更新当前天数标签 */
+function updateCurrentDayLabel(){
+  var y=window._sc.y,mo=window._sc.mo;
+  var daysInMonth=new Date(y,mo+1,0).getDate();
+  var el=document.getElementById('currentDayLabel');
+  if(el){
+    var s=_quickShifts[_selectedDay]||'未设置';
+    el.innerHTML='第 '+_selectedDay+' 天 <span style="font-size:13px;color:var(--muted)">/ '+daysInMonth+'</span> <span style="font-size:14px;color:'+(s==='未设置'?'var(--warn)':'var(--ok)')+'">'+s+'</span>';
+  }
+  /* 高亮网格中的当前天 */
+  for(var d=1;d<=daysInMonth;d++){
+    var cell=document.getElementById('qd'+d);
+    if(cell){
+      if(d===_selectedDay){
+        cell.style.borderColor='var(--accent)';
+        cell.style.transform='scale(1.08)';
+        cell.style.boxShadow='0 2px 8px rgba(232,155,184,.4)';
+      }else{
+        cell.style.borderColor='var(--rule)';
+        cell.style.transform='scale(1)';
+        cell.style.boxShadow='none';
+      }
+    }
+  }
 }
 /* 自动识别全图，找到姓名所在行，裁剪并逐格 OCR */
 var _fullImg=new Image();
