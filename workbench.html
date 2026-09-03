@@ -120,7 +120,7 @@ label.fl{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:5px;d
 #fitCal .cal-cell .dnum{font-weight:700;font-size:12px;margin-bottom:1px}
 .fit-rec{border-radius:5px;overflow:hidden;font-size:9px;line-height:1.3;display:flex;flex-direction:column}
 .fit-rec .dur{background:#9e9e9e;color:#fff;font-weight:600;padding:1px 4px;font-size:8.5px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fit-rec .name{padding:1px 4px;font-weight:600;color:#333;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fit-rec .name{padding:1px 4px;font-weight:600;color:#333;text-align:center;line-height:1.2;word-break:break-all}
 .fit-rec.strength .name{background:#b8e0c8}
 .fit-rec.dance .name{background:#fff0b8}
 .fit-rec.sq .name{background:#ffc8c8}
@@ -271,7 +271,6 @@ label.fl{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:5px;d
   <main class="main">
     <div class="topbar">
       <h1 id="pageTitle">我的排班</h1>
-      <button class="mini sync-btn topbar-sync" onclick="syncData()">🔄 同步</button>
     </div>
     <div id="views"></div>
   </main>
