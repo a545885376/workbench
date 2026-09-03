@@ -465,12 +465,10 @@ function render_schedule(){
   var v=$('.view[data-id=schedule]');
   var data=DB.get('schedule',{shifts:{}});
   if(!window._sc)window._sc={y:new Date().getFullYear(),mo:new Date().getMonth()};
-  var savedName=DB.get('schedName','');
   var cal=calHtml(window._sc.y,window._sc.mo,function(ds,cell){var s=data.shifts[ds];if(s){var dot=document.createElement('div');dot.className='dot';dot.style.background=shiftColor(s);dot.textContent=s;cell.appendChild(dot);}});
   v.innerHTML='<div class="grid cols-2">'+
     '<div class="card glass"><div class="card-h"><span class="ic" style="background:var(--pink)">📅</span><h3>我的排班</h3></div><div id="schedCal">'+cal+'</div></div>'+
     '<div class="card glass"><div class="card-h"><span class="ic" style="background:var(--lav)">📸</span><h3>上传排班照片</h3></div>'+
-    '<div style="margin-bottom:10px"><label class="fl">你的姓名（用于识别排班表中的你的行）</label><input id="schedName" class="field" placeholder="如：李慧慧" value="'+savedName+'" oninput="DB.set(\'schedName\',this.value)"></div>'+
     '<label class="btn primary btn-block" style="display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden">'+
     '<input type="file" accept="image/*" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0" onchange="ocrSchedPhoto(event)">'+
     '📷 拍照 / 选择排班照片</label>'+
